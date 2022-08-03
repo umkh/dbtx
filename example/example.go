@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"umkh/dbtx"
-	"umkh/dbtx/example/repo"
+	"time"
+
+	"github.com/umkh/dbtx"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -24,14 +26,14 @@ func main() {
 
 	tx := dbtx.New(db)
 
-	r := repo.New(tx)
+	r := NewRepo(tx)
 
 	if err := TransactionSaleBook(context.Background(), tx, r); err != nil {
 		log.Println(err)
 	}
 }
 
-func TransactionSaleBook(ctx context.Context, tx dbtx.TransactionI, repo *repo.Repo) error {
+func TransactionSaleBook(ctx context.Context, tx dbtx.TransactionI, repo *Repo) error {
 	ctx, err := tx.StartTx(context.Background())
 	if err != nil {
 		return err
@@ -53,4 +55,57 @@ func TransactionSaleBook(ctx context.Context, tx dbtx.TransactionI, repo *repo.R
 	}
 
 	return nil
+}
+
+type Repo struct {
+	tx dbtx.TransactionI
+}
+
+func NewRepo(tx dbtx.TransactionI) *Repo {
+	return &Repo{tx: tx}
+}
+
+func (r *Repo) CreateUser(ctx context.Context, name string) (id int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
+	defer cancel()
+
+	client := r.tx.GetClient(ctx)
+
+	query := `INSERT INTO users (name) VALUES ($1) RETURNING id`
+	if err = client.QueryRowx(query, name).Scan(&id); err != nil {
+		err = fmt.Errorf("%s", err.Error())
+		return
+	}
+
+	return
+}
+
+func (r *Repo) CreateBook(ctx context.Context, name string, price float32) (id int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
+	defer cancel()
+
+	client := r.tx.GetClient(ctx)
+
+	query := `INSERT INTO books (name, price) VALUES ($1, $2) RETURNING id`
+	if err = client.QueryRowxContext(ctx, query, name, price).Scan(&id); err != nil {
+		err = fmt.Errorf("%s", err.Error())
+		return
+	}
+
+	return
+}
+
+func (r *Repo) SaleBook(ctx context.Context, userID, bookID int64) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
+	defer cancel()
+
+	client := r.tx.GetClient(ctx)
+
+	query := `INSERT INTO users_books (user_id, book_id) VALUES ($1, $2)`
+	if err = client.QueryRowx(query, userID, bookID).Err(); err != nil {
+		err = fmt.Errorf("%s", err.Error())
+		return
+	}
+
+	return
 }

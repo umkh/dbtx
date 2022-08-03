@@ -1,4 +1,4 @@
-module umkh/dbtx
+module github.com/umkh/dbtx
 
 go 1.17
 
