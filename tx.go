@@ -10,29 +10,30 @@ import (
 
 type txk string
 
-const TxKey txk = "TX_KEY"
+const TxKey txk = "DBTX_KEY"
 
 type TransactionI interface {
 	GetClient(ctx context.Context) SQLDB
 	StartTx(context.Context) (context.Context, error)
-	Finish(context.Context, error)
+	FinishTx(ctx context.Context, err error) error
 }
 
 type Transaction struct {
 	db *sqlx.DB
 }
 
-func New(db *sqlx.DB) TransactionI {
+func New(db *sqlx.DB) *Transaction {
 	return &Transaction{db: db}
 }
 
 func (t *Transaction) StartTx(ctx context.Context) (context.Context, error) {
-	tx, err := t.db.BeginTxx(ctx, nil)
+	tx, err := t.db.Beginx()
 	if err != nil {
 		return ctx, err
 	}
 
-	return context.WithValue(ctx, TxKey, tx), nil
+	ctx = context.WithValue(ctx, TxKey, tx)
+	return ctx, nil
 }
 
 func (t *Transaction) GetClient(ctx context.Context) SQLDB {
@@ -44,26 +45,27 @@ func (t *Transaction) GetClient(ctx context.Context) SQLDB {
 	return tx
 }
 
-func (t *Transaction) Finish(ctx context.Context, err error) {
+func (t *Transaction) FinishTx(ctx context.Context, err error) error {
 	tx, ok := ctx.Value(TxKey).(*sqlx.Tx)
 	if !ok {
-		log.Printf("transaction ctx key not found")
-		return
+		return ErrCTXKeyNotFound
 	}
 
 	if err != nil {
-		if err := tx.Rollback(); err != nil {
+		if rollBackErr := tx.Rollback(); rollBackErr != nil {
 			log.Printf("transaction rollback error")
-			return
+			return err
 		}
-		log.Printf("transaction error")
-		return
+		log.Printf("rolled back")
+		return nil
 	}
 
-	if err := tx.Commit(); err != nil {
+	if commitErr := tx.Commit(); commitErr != nil {
 		log.Printf("transaction commit error")
-		return
+		return commitErr
 	}
+
+	return nil
 }
 
 type SQLDB interface {
