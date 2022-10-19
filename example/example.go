@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/umkh/dbtx"
 
@@ -38,7 +37,11 @@ func TransactionSaleBook(ctx context.Context, tx dbtx.TransactionI, repo *Repo) 
 	if err != nil {
 		return err
 	}
-	defer func() { tx.Finish(ctx, err) }()
+	defer func() {
+		if err := tx.FinishTx(ctx, err); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	userID, err := repo.CreateUser(ctx, "TestUser")
 	if err != nil {
@@ -66,9 +69,6 @@ func NewRepo(tx dbtx.TransactionI) *Repo {
 }
 
 func (r *Repo) CreateUser(ctx context.Context, name string) (id int64, err error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
-	defer cancel()
-
 	client := r.tx.GetClient(ctx)
 
 	query := `INSERT INTO users (name) VALUES ($1) RETURNING id`
@@ -81,9 +81,6 @@ func (r *Repo) CreateUser(ctx context.Context, name string) (id int64, err error
 }
 
 func (r *Repo) CreateBook(ctx context.Context, name string, price float32) (id int64, err error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
-	defer cancel()
-
 	client := r.tx.GetClient(ctx)
 
 	query := `INSERT INTO books (name, price) VALUES ($1, $2) RETURNING id`
@@ -96,9 +93,6 @@ func (r *Repo) CreateBook(ctx context.Context, name string, price float32) (id i
 }
 
 func (r *Repo) SaleBook(ctx context.Context, userID, bookID int64) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
-	defer cancel()
-
 	client := r.tx.GetClient(ctx)
 
 	query := `INSERT INTO users_books (user_id, book_id) VALUES ($1, $2)`
